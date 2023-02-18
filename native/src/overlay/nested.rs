@@ -247,9 +247,16 @@ where
                     mouse::Interaction::default()
                 };
 
-            element
-                .mouse_interaction(layout, cursor_position, viewport, renderer)
-                .max(interaction)
+            if matches!(interaction, mouse::Interaction::Idle) {
+                element.mouse_interaction(
+                    layout,
+                    cursor_position,
+                    viewport,
+                    renderer,
+                )
+            } else {
+                interaction
+            }
         }
 
         self.overlay.with_element_mut(|element| {
