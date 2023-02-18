@@ -97,21 +97,27 @@ where
         ) where
             Renderer: crate::Renderer,
         {
-            let layout = layouts.next().unwrap();
+            if let Some(layout) = layouts.next() {
+                renderer.with_layer(layout.bounds(), |renderer| {
+                    element.draw(
+                        renderer,
+                        theme,
+                        style,
+                        layout,
+                        cursor_position,
+                    );
+                });
 
-            renderer.with_layer(layout.bounds(), |renderer| {
-                element.draw(renderer, theme, style, layout, cursor_position);
-            });
-
-            if let Some(mut overlay) = element.overlay(layout, renderer) {
-                recurse(
-                    &mut overlay,
-                    layouts,
-                    renderer,
-                    theme,
-                    style,
-                    cursor_position,
-                );
+                if let Some(mut overlay) = element.overlay(layout, renderer) {
+                    recurse(
+                        &mut overlay,
+                        layouts,
+                        renderer,
+                        theme,
+                        style,
+                        cursor_position,
+                    );
+                }
             }
         }
 
@@ -136,12 +142,12 @@ where
         ) where
             Renderer: crate::Renderer,
         {
-            let layout = layouts.next().unwrap();
+            if let Some(layout) = layouts.next() {
+                element.operate(layout, renderer, operation);
 
-            element.operate(layout, renderer, operation);
-
-            if let Some(mut overlay) = element.overlay(layout, renderer) {
-                recurse(&mut overlay, layouts, renderer, operation);
+                if let Some(mut overlay) = element.overlay(layout, renderer) {
+                    recurse(&mut overlay, layouts, renderer, operation);
+                }
             }
         }
 
@@ -171,10 +177,10 @@ where
         where
             Renderer: crate::Renderer,
         {
-            let layout = layouts.next().unwrap();
-
-            let status =
-                if let Some(mut overlay) = element.overlay(layout, renderer) {
+            if let Some(layout) = layouts.next() {
+                let status = if let Some(mut overlay) =
+                    element.overlay(layout, renderer)
+                {
                     recurse(
                         &mut overlay,
                         layouts,
@@ -188,17 +194,20 @@ where
                     event::Status::Ignored
                 };
 
-            if matches!(status, event::Status::Ignored) {
-                element.on_event(
-                    event,
-                    layout,
-                    cursor_position,
-                    renderer,
-                    clipboard,
-                    shell,
-                )
+                if matches!(status, event::Status::Ignored) {
+                    element.on_event(
+                        event,
+                        layout,
+                        cursor_position,
+                        renderer,
+                        clipboard,
+                        shell,
+                    )
+                } else {
+                    status
+                }
             } else {
-                status
+                event::Status::Ignored
             }
         }
 
@@ -232,10 +241,10 @@ where
         where
             Renderer: crate::Renderer,
         {
-            let layout = layouts.next().unwrap();
-
-            let interaction =
-                if let Some(mut overlay) = element.overlay(layout, renderer) {
+            if let Some(layout) = layouts.next() {
+                let interaction = if let Some(mut overlay) =
+                    element.overlay(layout, renderer)
+                {
                     recurse(
                         &mut overlay,
                         layouts,
@@ -247,15 +256,18 @@ where
                     mouse::Interaction::default()
                 };
 
-            if matches!(interaction, mouse::Interaction::Idle) {
-                element.mouse_interaction(
-                    layout,
-                    cursor_position,
-                    viewport,
-                    renderer,
-                )
+                if matches!(interaction, mouse::Interaction::Idle) {
+                    element.mouse_interaction(
+                        layout,
+                        cursor_position,
+                        viewport,
+                        renderer,
+                    )
+                } else {
+                    interaction
+                }
             } else {
-                interaction
+                mouse::Interaction::default()
             }
         }
 
@@ -281,16 +293,19 @@ where
         where
             Renderer: crate::Renderer,
         {
-            let layout = layouts.next().unwrap();
+            if let Some(layout) = layouts.next() {
+                let is_over =
+                    element.is_over(layout, renderer, cursor_position);
 
-            let is_over = element.is_over(layout, renderer, cursor_position);
+                if is_over {
+                    return true;
+                }
 
-            if is_over {
-                return true;
-            }
-
-            if let Some(mut overlay) = element.overlay(layout, renderer) {
-                recurse(&mut overlay, layouts, renderer, cursor_position)
+                if let Some(mut overlay) = element.overlay(layout, renderer) {
+                    recurse(&mut overlay, layouts, renderer, cursor_position)
+                } else {
+                    false
+                }
             } else {
                 false
             }
