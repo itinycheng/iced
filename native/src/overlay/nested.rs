@@ -99,7 +99,9 @@ where
         {
             let layout = layouts.next().unwrap();
 
-            element.draw(renderer, theme, style, layout, cursor_position);
+            renderer.with_layer(layout.bounds(), |renderer| {
+                element.draw(renderer, theme, style, layout, cursor_position);
+            });
 
             if let Some(mut overlay) = element.overlay(layout, renderer) {
                 recurse(
