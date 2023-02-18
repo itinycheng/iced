@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::iter::Peekable;
 
 use iced_core::{Point, Rectangle, Size};
 
@@ -89,7 +90,7 @@ where
     ) {
         fn recurse<'a, Message, Renderer>(
             element: &mut overlay::Element<'_, Message, Renderer>,
-            mut layouts: impl Iterator<Item = Layout<'a>>,
+            mut layouts: Peekable<impl Iterator<Item = Layout<'a>>>,
             renderer: &mut Renderer,
             theme: &<Renderer as crate::Renderer>::Theme,
             style: &renderer::Style,
@@ -98,7 +99,26 @@ where
             Renderer: crate::Renderer,
         {
             if let Some(layout) = layouts.next() {
+                let is_over = layouts
+                    .peek()
+                    .and_then(|nested_layout| {
+                        element.overlay(layout, renderer).map(|overlay| {
+                            overlay.is_over(
+                                *nested_layout,
+                                renderer,
+                                cursor_position,
+                            )
+                        })
+                    })
+                    .unwrap_or_default();
+
                 renderer.with_layer(layout.bounds(), |renderer| {
+                    let cursor_position = if is_over {
+                        Point::new(-1.0, -1.0)
+                    } else {
+                        cursor_position
+                    };
+
                     element.draw(
                         renderer,
                         theme,
@@ -122,7 +142,7 @@ where
         }
 
         self.overlay.with_element_mut(|element| {
-            let layouts = layout.children();
+            let layouts = layout.children().peekable();
 
             recurse(element, layouts, renderer, theme, style, cursor_position);
         })
