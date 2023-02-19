@@ -1,47 +1,27 @@
-use std::cell::RefCell;
-
 use iced_core::{Point, Rectangle, Size};
 
 use crate::{
     event, layout, mouse, overlay, renderer, widget, Clipboard, Event, Layout,
-    Overlay, Shell,
+    Shell,
 };
 
 /// An [`Overlay`] container that displays nested overlays
 #[allow(missing_debug_implementations)]
 pub struct Nested<'a, Message, Renderer> {
-    overlay: Inner<'a, Message, Renderer>,
+    overlay: overlay::Element<'a, Message, Renderer>,
 }
 
-impl<'a, Message, Renderer> Nested<'a, Message, Renderer> {
-    /// Creates a nested overlay from the provided [`overlay::Element`]
-    pub fn new(element: overlay::Element<'a, Message, Renderer>) -> Self {
-        Self {
-            overlay: Inner(RefCell::new(element)),
-        }
-    }
-}
-
-struct Inner<'a, Message, Renderer>(
-    RefCell<overlay::Element<'a, Message, Renderer>>,
-);
-
-impl<'a, Message, Renderer> Inner<'a, Message, Renderer> {
-    fn with_element_mut<T>(
-        &self,
-        mut f: impl FnMut(&mut overlay::Element<'_, Message, Renderer>) -> T,
-    ) -> T {
-        (f)(&mut self.0.borrow_mut())
-    }
-}
-
-impl<'a, Message, Renderer> Overlay<Message, Renderer>
-    for Nested<'a, Message, Renderer>
+impl<'a, Message, Renderer> Nested<'a, Message, Renderer>
 where
     Renderer: crate::Renderer,
 {
-    fn layout(
-        &self,
+    /// Creates a nested overlay from the provided [`overlay::Element`]
+    pub fn new(element: overlay::Element<'a, Message, Renderer>) -> Self {
+        Self { overlay: element }
+    }
+
+    pub fn layout(
+        &mut self,
         renderer: &Renderer,
         bounds: Size,
         position: Point,
@@ -74,13 +54,11 @@ where
             }
         }
 
-        self.overlay.with_element_mut(|element| {
-            recurse(element, renderer, bounds, position)
-        })
+        recurse(&mut self.overlay, renderer, bounds, position)
     }
 
-    fn draw(
-        &self,
+    pub fn draw(
+        &mut self,
         renderer: &mut Renderer,
         theme: &<Renderer as crate::Renderer>::Theme,
         style: &renderer::Style,
@@ -145,12 +123,17 @@ where
             }
         }
 
-        self.overlay.with_element_mut(|element| {
-            recurse(element, layout, renderer, theme, style, cursor_position);
-        })
+        recurse(
+            &mut self.overlay,
+            layout,
+            renderer,
+            theme,
+            style,
+            cursor_position,
+        );
     }
 
-    fn operate(
+    pub fn operate(
         &mut self,
         layout: Layout<'_>,
         renderer: &Renderer,
@@ -177,10 +160,10 @@ where
             }
         }
 
-        recurse(self.overlay.0.get_mut(), layout, renderer, operation)
+        recurse(&mut self.overlay, layout, renderer, operation)
     }
 
-    fn on_event(
+    pub fn on_event(
         &mut self,
         event: Event,
         layout: Layout<'_>,
@@ -238,7 +221,7 @@ where
         }
 
         recurse(
-            self.overlay.0.get_mut(),
+            &mut self.overlay,
             layout,
             event,
             cursor_position,
@@ -248,8 +231,8 @@ where
         )
     }
 
-    fn mouse_interaction(
-        &self,
+    pub fn mouse_interaction(
+        &mut self,
         layout: Layout<'_>,
         cursor_position: Point,
         viewport: &Rectangle,
@@ -297,13 +280,17 @@ where
             }
         }
 
-        self.overlay.with_element_mut(|element| {
-            recurse(element, layout, cursor_position, viewport, renderer)
-        })
+        recurse(
+            &mut self.overlay,
+            layout,
+            cursor_position,
+            viewport,
+            renderer,
+        )
     }
 
-    fn is_over(
-        &self,
+    pub fn is_over(
+        &mut self,
         layout: Layout<'_>,
         renderer: &Renderer,
         cursor_position: Point,
@@ -344,16 +331,6 @@ where
             }
         }
 
-        self.overlay.with_element_mut(|element| {
-            recurse(element, layout, renderer, cursor_position)
-        })
-    }
-
-    fn overlay<'b>(
-        &'b mut self,
-        _layout: crate::Layout<'_>,
-        _renderer: &Renderer,
-    ) -> Option<overlay::Element<'b, Message, Renderer>> {
-        None
+        recurse(&mut self.overlay, layout, renderer, cursor_position)
     }
 }

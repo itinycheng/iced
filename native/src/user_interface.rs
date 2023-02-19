@@ -1,11 +1,11 @@
 //! Implement your own event loop to drive a user interface.
 use crate::event::{self, Event};
+use crate::layout;
 use crate::mouse;
 use crate::renderer;
 use crate::widget;
 use crate::window;
 use crate::{application, overlay};
-use crate::{layout, Overlay};
 use crate::{Clipboard, Element, Layout, Point, Rectangle, Shell, Size};
 
 /// A set of interactive graphical elements with a specific [`Layout`].
@@ -266,20 +266,22 @@ where
                 }
             }
 
-            let base_cursor = manual_overlay
-                .as_ref()
-                .filter(|overlay| {
+            let base_cursor = if manual_overlay
+                .as_mut()
+                .map(|overlay| {
                     overlay.is_over(
                         Layout::new(&layout),
                         renderer,
                         cursor_position,
                     )
                 })
-                .map(|_| {
-                    // TODO: Type-safe cursor availability
-                    Point::new(-1.0, -1.0)
-                })
-                .unwrap_or(cursor_position);
+                .unwrap_or_default()
+            {
+                // TODO: Type-safe cursor availability
+                Point::new(-1.0, -1.0)
+            } else {
+                cursor_position
+            };
 
             self.overlay = Some(layout);
 
@@ -438,7 +440,7 @@ where
 
         let viewport = Rectangle::with_size(self.bounds);
 
-        let base_cursor = if let Some(overlay) = self
+        let base_cursor = if let Some(mut overlay) = self
             .root
             .as_widget_mut()
             .overlay(&mut self.state, Layout::new(&self.base), renderer)
@@ -501,7 +503,7 @@ where
                 root.as_widget_mut()
                     .overlay(&mut self.state, Layout::new(base), renderer)
                     .map(overlay::Nested::new)
-                    .map(|overlay| {
+                    .map(|mut overlay| {
                         let overlay_interaction = overlay.mouse_interaction(
                             Layout::new(layout),
                             cursor_position,
