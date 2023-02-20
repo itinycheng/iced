@@ -377,11 +377,14 @@ where
             overlay_builder: |instance, tree| {
                 instance.state.get_mut().as_mut().unwrap().with_element_mut(
                     move |element| {
-                        element.as_mut().unwrap().as_widget_mut().overlay(
-                            &mut tree.children[0],
-                            layout,
-                            renderer,
-                        )
+                        element
+                            .as_mut()
+                            .unwrap()
+                            .as_widget_mut()
+                            .overlay(&mut tree.children[0], layout, renderer)
+                            .map(|overlay| {
+                                RefCell::new(overlay::Nested::new(overlay))
+                            })
                     },
                 )
             },
@@ -389,7 +392,7 @@ where
         .build();
 
         let has_overlay = overlay.with_overlay(|overlay| {
-            overlay.as_ref().map(overlay::Element::position)
+            overlay.as_ref().map(|nested| nested.borrow().position())
         });
 
         has_overlay.map(|position| {
@@ -410,8 +413,8 @@ struct Overlay<'a, 'b, Message, Renderer, Event, S> {
     types: PhantomData<(Message, Event, S)>,
 
     #[borrows(mut instance, mut tree)]
-    #[covariant]
-    overlay: Option<overlay::Element<'this, Event, Renderer>>,
+    #[not_covariant]
+    overlay: Option<RefCell<overlay::Nested<'this, Event, Renderer>>>,
 }
 
 struct OverlayInstance<'a, 'b, Message, Renderer, Event, S> {
@@ -423,24 +426,20 @@ impl<'a, 'b, Message, Renderer, Event, S>
 {
     fn with_overlay_maybe<T>(
         &self,
-        f: impl FnOnce(&overlay::Element<'_, Event, Renderer>) -> T,
+        f: impl FnOnce(&mut overlay::Nested<'_, Event, Renderer>) -> T,
     ) -> Option<T> {
-        self.overlay
-            .as_ref()
-            .unwrap()
-            .borrow_overlay()
-            .as_ref()
-            .map(f)
+        self.overlay.as_ref().unwrap().with_overlay(|overlay| {
+            overlay.as_ref().map(|nested| (f)(&mut nested.borrow_mut()))
+        })
     }
 
     fn with_overlay_mut_maybe<T>(
         &mut self,
-        f: impl FnOnce(&mut overlay::Element<'_, Event, Renderer>) -> T,
+        f: impl FnOnce(&mut overlay::Nested<'_, Event, Renderer>) -> T,
     ) -> Option<T> {
-        self.overlay
-            .as_mut()
-            .unwrap()
-            .with_overlay_mut(|overlay| overlay.as_mut().map(f))
+        self.overlay.as_mut().unwrap().with_overlay_mut(|overlay| {
+            overlay.as_mut().map(|nested| (f)(nested.get_mut()))
+        })
     }
 }
 
@@ -457,9 +456,7 @@ where
         position: Point,
     ) -> layout::Node {
         self.with_overlay_maybe(|overlay| {
-            let translation = position - overlay.position();
-
-            overlay.layout(renderer, bounds, translation)
+            overlay.layout(renderer, bounds, position)
         })
         .unwrap_or_default()
     }

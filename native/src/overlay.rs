@@ -8,7 +8,7 @@ pub mod menu;
 pub use element::Element;
 pub use group::Group;
 pub use menu::Menu;
-pub(crate) use nested::Nested;
+pub use nested::Nested;
 
 use crate::event::{self, Event};
 use crate::layout;

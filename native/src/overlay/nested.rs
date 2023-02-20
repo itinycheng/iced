@@ -20,6 +20,12 @@ where
         Self { overlay: element }
     }
 
+    /// Returns the position of the [`Nested`] overlay.
+    pub fn position(&self) -> Point {
+        self.overlay.position()
+    }
+
+    /// Returns the layout [`Node`] of the [`Nested`] overlay.
     pub fn layout(
         &mut self,
         renderer: &Renderer,
@@ -35,7 +41,7 @@ where
         where
             Renderer: crate::Renderer,
         {
-            let translation = position - Point::ORIGIN;
+            let translation = position - element.position();
 
             let node = element.layout(renderer, bounds, translation);
 
@@ -57,6 +63,7 @@ where
         recurse(&mut self.overlay, renderer, bounds, position)
     }
 
+    /// Draws the [`Nested`] overlay using the associated `Renderer`.
     pub fn draw(
         &mut self,
         renderer: &mut Renderer,
@@ -133,6 +140,7 @@ where
         );
     }
 
+    /// Applies a [`widget::Operation`] to the [`Nested`] overlay.
     pub fn operate(
         &mut self,
         layout: Layout<'_>,
@@ -163,6 +171,7 @@ where
         recurse(&mut self.overlay, layout, renderer, operation)
     }
 
+    /// Processes a runtime [`Event`].
     pub fn on_event(
         &mut self,
         event: Event,
@@ -246,6 +255,7 @@ where
         status
     }
 
+    /// Returns the current [`mouse::Interaction`] of the [`Nested`] overlay.
     pub fn mouse_interaction(
         &mut self,
         layout: Layout<'_>,
@@ -304,6 +314,7 @@ where
         )
     }
 
+    /// Returns true if the cursor is over the [`Nested`] overlay.
     pub fn is_over(
         &mut self,
         layout: Layout<'_>,
