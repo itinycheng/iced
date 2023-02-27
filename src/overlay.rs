@@ -13,6 +13,6 @@ pub mod menu {
     pub use iced_native::overlay::menu::{Appearance, State, StyleSheet};
 
     /// A widget that produces a message when clicked.
-    pub type Menu<'a, Message, Renderer = crate::Renderer> =
-        iced_native::overlay::Menu<'a, Message, Renderer>;
+    pub type Menu<'a, T, Message, Renderer = crate::Renderer> =
+        iced_native::overlay::Menu<'a, T, Message, Renderer>;
 }

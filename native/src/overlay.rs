@@ -1,12 +1,14 @@
 //! Display interactive elements on top of other widgets.
 mod element;
 mod group;
+mod nested;
 
 pub mod menu;
 
 pub use element::Element;
 pub use group::Group;
 pub use menu::Menu;
+pub use nested::Nested;
 
 use crate::event::{self, Event};
 use crate::layout;
@@ -94,8 +96,22 @@ where
     ///
     /// By default, it returns true if the bounds of the `layout` contain
     /// the `cursor_position`.
-    fn is_over(&self, layout: Layout<'_>, cursor_position: Point) -> bool {
+    fn is_over(
+        &self,
+        layout: Layout<'_>,
+        _renderer: &Renderer,
+        cursor_position: Point,
+    ) -> bool {
         layout.bounds().contains(cursor_position)
+    }
+
+    /// Returns the nested overlay of the [`Overlay`], if there is any.
+    fn overlay<'a>(
+        &'a mut self,
+        _layout: Layout<'_>,
+        _renderer: &Renderer,
+    ) -> Option<Element<'a, Message, Renderer>> {
+        None
     }
 }
 

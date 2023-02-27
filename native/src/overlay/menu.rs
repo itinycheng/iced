@@ -19,7 +19,7 @@ pub use iced_style::menu::{Appearance, StyleSheet};
 
 /// A list of selectable options.
 #[allow(missing_debug_implementations)]
-pub struct Menu<'a, T, Renderer>
+pub struct Menu<'a, T, Message, Renderer>
 where
     Renderer: text::Renderer,
     Renderer::Theme: StyleSheet,
@@ -27,7 +27,7 @@ where
     state: &'a mut State,
     options: &'a [T],
     hovered_option: &'a mut Option<usize>,
-    last_selection: &'a mut Option<T>,
+    on_selected: &'a dyn Fn(T) -> Message,
     width: f32,
     padding: Padding,
     text_size: Option<f32>,
@@ -35,7 +35,7 @@ where
     style: <Renderer::Theme as StyleSheet>::Style,
 }
 
-impl<'a, T, Renderer> Menu<'a, T, Renderer>
+impl<'a, T, Message, Renderer> Menu<'a, T, Message, Renderer>
 where
     T: ToString + Clone,
     Renderer: text::Renderer + 'a,
@@ -48,13 +48,13 @@ where
         state: &'a mut State,
         options: &'a [T],
         hovered_option: &'a mut Option<usize>,
-        last_selection: &'a mut Option<T>,
+        on_selected: &'a dyn Fn(T) -> Message,
     ) -> Self {
         Menu {
             state,
             options,
             hovered_option,
-            last_selection,
+            on_selected,
             width: 0.0,
             padding: Padding::ZERO,
             text_size: None,
@@ -102,7 +102,7 @@ where
     /// The `target_height` will be used to display the menu either on top
     /// of the target or under it, depending on the screen position and the
     /// dimensions of the [`Menu`].
-    pub fn overlay<Message: 'a>(
+    pub fn overlay(
         self,
         position: Point,
         target_height: f32,
@@ -114,24 +114,58 @@ where
     }
 }
 
+/// The status of a [`Menu`]
+#[derive(Debug, Clone, Copy, Default)]
+pub enum Status {
+    /// [`Menu`] is closed
+    #[default]
+    Closed,
+    /// [`Menu`] is closing
+    Closing,
+    /// [`Menu`] is open
+    Open,
+}
+
 /// The local state of a [`Menu`].
 #[derive(Debug)]
 pub struct State {
     tree: Tree,
+    status: Status,
 }
 
 impl State {
     /// Creates a new [`State`] for a [`Menu`].
     pub fn new() -> Self {
-        Self {
-            tree: Tree::empty(),
-        }
+        Self::default()
+    }
+
+    /// Returns true if the [`Menu`] is open
+    pub fn is_open(&self) -> bool {
+        matches!(self.status, Status::Open)
+    }
+
+    /// Returns true if the [`Menu`] is closing
+    pub fn is_closing(&self) -> bool {
+        matches!(self.status, Status::Closing)
+    }
+
+    /// Open the [`Menu`]
+    pub fn open(&mut self) {
+        self.status = Status::Open;
+    }
+
+    /// Close the [`Menu`]
+    pub fn close(&mut self) {
+        self.status = Status::Closed;
     }
 }
 
 impl Default for State {
     fn default() -> Self {
-        Self::new()
+        Self {
+            tree: Tree::empty(),
+            status: Status::default(),
+        }
     }
 }
 
@@ -155,7 +189,10 @@ where
     Renderer::Theme:
         StyleSheet + container::StyleSheet + scrollable::StyleSheet,
 {
-    pub fn new<T>(menu: Menu<'a, T, Renderer>, target_height: f32) -> Self
+    pub fn new<T>(
+        menu: Menu<'a, T, Message, Renderer>,
+        target_height: f32,
+    ) -> Self
     where
         T: Clone + ToString,
     {
@@ -163,7 +200,7 @@ where
             state,
             options,
             hovered_option,
-            last_selection,
+            on_selected,
             width,
             padding,
             font,
@@ -174,7 +211,8 @@ where
         let container = Container::new(Scrollable::new(List {
             options,
             hovered_option,
-            last_selection,
+            status: &mut state.status,
+            on_selected,
             font,
             text_size,
             padding,
@@ -301,14 +339,15 @@ where
     }
 }
 
-struct List<'a, T, Renderer>
+struct List<'a, T, Message, Renderer>
 where
     Renderer: text::Renderer,
     Renderer::Theme: StyleSheet,
 {
     options: &'a [T],
     hovered_option: &'a mut Option<usize>,
-    last_selection: &'a mut Option<T>,
+    status: &'a mut Status,
+    on_selected: &'a dyn Fn(T) -> Message,
     padding: Padding,
     text_size: Option<f32>,
     font: Renderer::Font,
@@ -316,7 +355,7 @@ where
 }
 
 impl<'a, T, Message, Renderer> Widget<Message, Renderer>
-    for List<'a, T, Renderer>
+    for List<'a, T, Message, Renderer>
 where
     T: Clone + ToString,
     Renderer: text::Renderer,
@@ -362,7 +401,7 @@ where
         cursor_position: Point,
         renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
-        _shell: &mut Shell<'_, Message>,
+        shell: &mut Shell<'_, Message>,
     ) -> event::Status {
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
@@ -371,9 +410,13 @@ where
                 if bounds.contains(cursor_position) {
                     if let Some(index) = *self.hovered_option {
                         if let Some(option) = self.options.get(index) {
-                            *self.last_selection = Some(option.clone());
+                            shell.publish((self.on_selected)(option.clone()));
+                            *self.status = Status::Closed;
+                            return event::Status::Captured;
                         }
                     }
+                } else {
+                    *self.status = Status::Closing;
                 }
             }
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
@@ -407,9 +450,13 @@ where
 
                     if let Some(index) = *self.hovered_option {
                         if let Some(option) = self.options.get(index) {
-                            *self.last_selection = Some(option.clone());
+                            shell.publish((self.on_selected)(option.clone()));
+                            *self.status = Status::Closed;
+                            return event::Status::Captured;
                         }
                     }
+                } else {
+                    *self.status = Status::Closing;
                 }
             }
             _ => {}
@@ -504,7 +551,7 @@ where
     }
 }
 
-impl<'a, T, Message, Renderer> From<List<'a, T, Renderer>>
+impl<'a, T, Message, Renderer> From<List<'a, T, Message, Renderer>>
     for Element<'a, Message, Renderer>
 where
     T: ToString + Clone,
@@ -512,7 +559,7 @@ where
     Renderer: 'a + text::Renderer,
     Renderer::Theme: StyleSheet,
 {
-    fn from(list: List<'a, T, Renderer>) -> Self {
+    fn from(list: List<'a, T, Message, Renderer>) -> Self {
         Element::new(list)
     }
 }

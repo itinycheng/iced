@@ -137,11 +137,11 @@ where
         From<<Renderer::Theme as StyleSheet>::Style>,
 {
     fn tag(&self) -> tree::Tag {
-        tree::Tag::of::<State<T>>()
+        tree::Tag::of::<State>()
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(State::<T>::new())
+        tree::State::new(State::new())
     }
 
     fn width(&self) -> Length {
@@ -187,7 +187,7 @@ where
             self.on_selected.as_ref(),
             self.selected.as_ref(),
             &self.options,
-            || tree.state.downcast_mut::<State<T>>(),
+            || tree.state.downcast_mut::<State>(),
         )
     }
 
@@ -224,7 +224,7 @@ where
             self.selected.as_ref(),
             &self.handle,
             &self.style,
-            || tree.state.downcast_ref::<State<T>>(),
+            || tree.state.downcast_ref::<State>(),
         )
     }
 
@@ -234,7 +234,7 @@ where
         layout: Layout<'_>,
         _renderer: &Renderer,
     ) -> Option<overlay::Element<'b, Message, Renderer>> {
-        let state = tree.state.downcast_mut::<State<T>>();
+        let state = tree.state.downcast_mut::<State>();
 
         overlay(
             layout,
@@ -243,6 +243,7 @@ where
             self.text_size,
             self.font.clone(),
             &self.options,
+            &self.on_selected,
             self.style.clone(),
         )
     }
@@ -269,28 +270,24 @@ where
 
 /// The local state of a [`PickList`].
 #[derive(Debug)]
-pub struct State<T> {
+pub struct State {
     menu: menu::State,
     keyboard_modifiers: keyboard::Modifiers,
-    is_open: bool,
     hovered_option: Option<usize>,
-    last_selection: Option<T>,
 }
 
-impl<T> State<T> {
+impl State {
     /// Creates a new [`State`] for a [`PickList`].
     pub fn new() -> Self {
         Self {
             menu: menu::State::default(),
             keyboard_modifiers: keyboard::Modifiers::default(),
-            is_open: bool::default(),
             hovered_option: Option::default(),
-            last_selection: Option::default(),
         }
     }
 }
 
-impl<T> Default for State<T> {
+impl Default for State {
     fn default() -> Self {
         Self::new()
     }
@@ -402,7 +399,7 @@ pub fn update<'a, T, Message>(
     on_selected: &dyn Fn(T) -> Message,
     selected: Option<&T>,
     options: &[T],
-    state: impl FnOnce() -> &'a mut State<T>,
+    state: impl FnOnce() -> &'a mut State,
 ) -> event::Status
 where
     T: PartialEq + Clone + 'a,
@@ -412,31 +409,26 @@ where
         | Event::Touch(touch::Event::FingerPressed { .. }) => {
             let state = state();
 
-            let event_status = if state.is_open {
-                // Event wasn't processed by overlay, so cursor was clicked either outside it's
-                // bounds or on the drop-down, either way we close the overlay.
-                state.is_open = false;
-
-                event::Status::Captured
-            } else if layout.bounds().contains(cursor_position) {
-                state.is_open = true;
-                state.hovered_option =
-                    options.iter().position(|option| Some(option) == selected);
+            let status = if layout.bounds().contains(cursor_position) {
+                if state.menu.is_open() {
+                    state.menu.close();
+                } else if !state.menu.is_closing() {
+                    state.menu.open();
+                    state.hovered_option = options
+                        .iter()
+                        .position(|option| Some(option) == selected);
+                }
 
                 event::Status::Captured
             } else {
                 event::Status::Ignored
             };
 
-            if let Some(last_selection) = state.last_selection.take() {
-                shell.publish((on_selected)(last_selection));
-
-                state.is_open = false;
-
-                event::Status::Captured
-            } else {
-                event_status
+            if state.menu.is_closing() {
+                state.menu.close();
             }
+
+            status
         }
         Event::Mouse(mouse::Event::WheelScrolled {
             delta: mouse::ScrollDelta::Lines { y, .. },
@@ -445,7 +437,7 @@ where
 
             if state.keyboard_modifiers.command()
                 && layout.bounds().contains(cursor_position)
-                && !state.is_open
+                && !state.menu.is_open()
             {
                 fn find_next<'a, T: PartialEq>(
                     selected: &'a T,
@@ -510,11 +502,12 @@ pub fn mouse_interaction(
 /// Returns the current overlay of a [`PickList`].
 pub fn overlay<'a, T, Message, Renderer>(
     layout: Layout<'_>,
-    state: &'a mut State<T>,
+    state: &'a mut State,
     padding: Padding,
     text_size: Option<f32>,
     font: Renderer::Font,
     options: &'a [T],
+    on_selected: &'a dyn Fn(T) -> Message,
     style: <Renderer::Theme as StyleSheet>::Style,
 ) -> Option<overlay::Element<'a, Message, Renderer>>
 where
@@ -528,14 +521,14 @@ where
     <Renderer::Theme as menu::StyleSheet>::Style:
         From<<Renderer::Theme as StyleSheet>::Style>,
 {
-    if state.is_open {
+    if state.menu.is_open() {
         let bounds = layout.bounds();
 
         let mut menu = Menu::new(
             &mut state.menu,
             options,
             &mut state.hovered_option,
-            &mut state.last_selection,
+            on_selected,
         )
         .width(bounds.width)
         .padding(padding)
@@ -565,7 +558,7 @@ pub fn draw<'a, T, Renderer>(
     selected: Option<&T>,
     handle: &Handle<Renderer::Font>,
     style: &<Renderer::Theme as StyleSheet>::Style,
-    state: impl FnOnce() -> &'a State<T>,
+    state: impl FnOnce() -> &'a State,
 ) where
     Renderer: text::Renderer,
     Renderer::Theme: StyleSheet,
@@ -601,7 +594,7 @@ pub fn draw<'a, T, Renderer>(
             size,
         }) => Some((font.clone(), *code_point, *size)),
         Handle::Dynamic { open, closed } => {
-            if state().is_open {
+            if state().menu.is_open() {
                 Some((open.font.clone(), open.code_point, open.size))
             } else {
                 Some((closed.font.clone(), closed.code_point, closed.size))
